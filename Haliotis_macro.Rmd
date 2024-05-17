@@ -1,0 +1,319 @@
+---
+title: "Haliotis_macro"
+author: "B. Serranito"
+date: "2024-04-01"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+rm(list=ls())
+
+```
+
+# Library
+```{r}
+
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(spocc)
+library(sf)
+library(viridis)
+library(terra)
+
+devtools::install_github("dkahle/ggmap", ref = "tidyup")
+
+library(ggmap)
+```
+
+
+# Data Haliotis
+```{r}
+
+
+Hal_macro=occ(query = 'Haliotis tuberculata', from = c('inat', 'gbif','obis'), limit=10000)
+
+Hal_macro_df=occ2df(obj = Hal_macro) %>% 
+  mutate(longitude=as.numeric(longitude),
+         latitude=as.numeric(latitude))
+
+```
+
+
+## plot
+```{r}
+
+wm <- borders("world", colour="gray50", fill="gray50")
+
+Hal_macro_sf=Hal_macro_df %>% drop_na() %>% 
+  st_as_sf(coords=c('longitude','latitude'))
+
+Halio_p=ggplot(Hal_macro_sf,aes(geometry=geometry))+
+  wm+
+  geom_sf(alpha=.3)+
+  coord_sf(xlim=c(-7,10), ylim=c(38,51))+
+  labs(title='Haliotis tuberculata')
+
+ggsave(Halio_p, file='Halio_p.png', width=8, height=8, dpi=350)
+
+```
+
+# Bloc DJ
+
+```{r}
+setwd('~/R/Velella/Haliotis/Data/')
+
+data_bloc=readxl::read_xlsx('Data_bloc_DM_0424.xlsx') %>% 
+  mutate(Surf=(Longeur*Largeur)*0.0001,
+         Couleur=ifelse(Couleur=='NA', NA, Couleur) )%>% 
+  
+  mutate(Surf_bin = cut(Surf, breaks=c(0,0.1,0.20,0.3,0.4)))
+
+histo_bin_p=ggplot(data_bloc,aes(Surf, fill=Surf_bin))+
+  geom_histogram(bins=40, col='black')+
+  xlab('m²')+
+  scale_fill_viridis_d()+
+  theme_bw()
+
+histo_coul_p=ggplot(data_bloc,aes(Surf, fill=Couleur))+
+  geom_histogram(bins=40, col='black')+
+  xlab('m²')+
+  theme_bw()
+
+
+Long_surf=ggplot(data_bloc, aes(Longeur, Surf, col=Surf_bin))+
+  geom_point()+
+    scale_colour_viridis_d()+
+  geom_smooth(method='lm', aes(group=1))+
+  theme_bw()
+
+lm_Long=lm(Surf~ Longeur, data=data_bloc)
+lm_Larg=lm(Surf~ Largeur, data=data_bloc)
+
+summary(lm_Long)
+summary(lm_Larg)
+
+
+all_p=ggpubr::ggarrange(histo_bin_p,histo_coul_p,Long_surf, ncol=2, nrow=2)
+
+all_p
+
+ggsave(all_p, file='bloc_choice.png',dpi=350, width=10,height=10)
+
+```
+
+# Data inventaire
+```{r}
+setwd('~/R/Velella/Haliotis/Data')
+
+data_inventaire=readxl::read_xlsx('Data_inventaire.xlsx') %>% 
+  mutate(Long=as.numeric(Long),
+         Lat=as.numeric(Lat))
+```
+
+
+```{r}
+
+# setwd('E:/Lidar/0325_6850/')
+# 
+# list=list.files(pattern='.asc',recursive=T)
+# 
+# library(sf)
+# x = read.table(list[2])
+# xx <- st_as_sf(x)
+# 
+# rast=terra::rast(list[20])
+# 
+# 
+# plot(rast)
+
+
+# setwd('C:/Users/bserranito/Documents/R/Velella/Haliotis')
+# 
+# list.files(pattern='.tif')
+# 
+# StEno=terra::rast('RasterEnogat.tif')
+# 
+# plot(StEno)
+# 
+# crs(StEno)
+# 
+# 
+# setwd('E:/France/FRA_adm/')
+# 
+# Fr_vect=terra::vect('FRA_adm0.shp')
+# 
+# 
+# 
+# fr_crop=terra::crop(Fr_vect,e)
+# 
+# 
+# 
+# WGS84 <- "+init=EPSG:4326"
+# 
+# StEno_WGS84  <- terra::project(StEno, "EPSG:4326")
+# 
+# 
+# 
+# e= ext(-1,3,48,53)
+# 
+# plot(Fr_vect, ext=e)
+# 
+# terra::plot(StEno_WGS84, add=T)
+
+```
+
+# NMT St Enogat
+
+```{r}
+setwd('C:/Users/bserranito/Documents/R/Velella/Haliotis')
+StEno_1=terra::rast('test.tif')
+StEno_2=terra::rast('test_2.tif')
+
+
+StEno=merge(StEno_1,StEno_2)
+plot(StEno)
+
+
+StEno_crop=crop(StEno, c(325999.5,326999.5,6849500,6850400))
+plot(StEno_crop)
+
+
+crs(StEno_crop)  <- "epsg:2154"
+
+StEno_WGS84  <- terra::project(StEno_crop, "+proj=longlat +datum=WGS84")
+
+
+
+StEno_WGS84=crop(StEno_WGS84, c(-2.08,-2.07,48.639,48.647))
+
+names(StEno_WGS84)<-'Elevation'
+plot(StEno_WGS84)
+points(data_inventaire$Long,data_inventaire$Lat)
+
+
+StEno_WGS84_df=as.data.frame(StEno_WGS84,xy=T) %>% 
+  mutate(Elevation=as.numeric(Elevation))
+
+
+
+P_saintEno=ggplot()+
+  geom_tile(data=StEno_WGS84_df,aes(x,y, fill=Elevation))+
+  geom_point(data=data_inventaire, aes(Long,Lat, col=Station), size=2)+
+  scale_fill_viridis()+
+  theme_bw()+
+  xlab('Longitude')+
+  ylab('Latitude')
+
+
+# ggsave(P_saintEno, file='P_saintEno.png', dpi=350, height=8, width=8)
+
+
+coords=data_inventaire %>%
+  select(Station,Date,Point, Num_bloc, Long,Lat) %>% distinct()
+
+hh=coords %>% 
+  bind_cols(extract(StEno_WGS84,coords %>%  select(Long,Lat))) 
+
+ggplot(hh,aes(Elevation))+
+  geom_density()
+  
+```
+
+### Grid map
+```{r}
+StEno_WGS84_sf=as.data.frame(StEno_WGS84,xy=T) %>% 
+  mutate(Elevation=as.numeric(Elevation)) %>% 
+  st_as_sf(coords=c('x','y'),crs=4326)# make grid and number cells
+
+
+reqGrid <- st_make_grid(StEno_WGS84_sf) %>% st_sf %>% 
+  dplyr::mutate(id = 1:nrow(.))
+
+
+
+
+# make bounding box
+reqGridBbox <- st_bbox(reqGrid)
+
+# calculate number of rows/columns
+# nCols <- (reqGridBbox[3]-reqGridBbox[1])/nrow(reqGrid)
+nCols <- 10
+# nRows <- (reqGridBbox[4]-reqGridBbox[2])/nrow(reqGrid)
+nRows <-10
+
+
+# label by row / column number and combine labels
+reqGrid.l <- reqGrid %>% 
+  mutate(cols = rep(LETTERS[1:nCols],nRows),
+         rows = unlist(lapply(1:nRows, rep, nCols))) %>% 
+  group_by(id) %>% 
+  mutate(lab = paste(cols,rows,collapse=''))
+
+
+StEno_grid_p=ggplot()+
+  geom_sf(data=StEno_WGS84_sf,aes(geometry=geometry, col=Elevation))+
+  geom_sf(data=reqGrid.l, aes(geometry=geometry), fill=NA)+
+  scale_color_viridis()+
+  geom_sf_label(data=reqGrid.l,aes(geometry=geometry, label=lab), alpha=.4)+
+  theme_bw()
+
+
+# ggsave(StEno_grid_p, file='StEno_grid_p.png' ,dpi=350, width=10,height=10)
+
+```
+
+#### Grid et inventaire
+
+```{r}
+data_inventaire_sf=data_inventaire %>% 
+  st_as_sf(coords=c('Long','Lat'),crs=4326)
+
+
+Grid_simplified=reqGrid.l %>% 
+  select(lab) %>% 
+  rename('Code_station'='lab')
+
+
+
+data_inventaire_grid_sf=Grid_simplified %>% 
+  st_intersection(data_inventaire_sf)
+
+writexl::write_xlsx(data_inventaire_grid_sf, path='data_inventaire_grid.xlsx')
+
+
+StEno_grid_inventaire=ggplot()+
+  geom_sf(data=StEno_WGS84_sf,aes(geometry=geometry, col=Elevation))+
+    geom_sf(data=Grid_simplified %>%  filter(Code_station %in% data_inventaire_grid_sf$Code_station),
+            aes(geometry=geometry), alpha=.2, fill='red')+
+   scale_color_viridis()+
+  theme_bw()
+
+
+cor_station_code=ggplot(data_inventaire_grid_sf, aes(Code_station,fill=Station))+
+  geom_histogram(stat='count', position=position_dodge())+
+  theme_bw()
+
+
+# ggsave(cor_station_code, file='cor_station_code.png' ,dpi=350, width=6,height=6)
+
+```
+
+
+# Get_map
+
+Téléchargement de carte google maps
+
+
+```{r}
+
+
+chicago <- get_stamenmap(bbox = c(left = -88.0225, bottom = 41.5949, 
+                                  right = -87.2713, top = 42.0677), 
+                         zoom = 11)
+
+ggmap(chicago)
+```
+
